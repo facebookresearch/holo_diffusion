@@ -1,0 +1,223 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+
+# Experiment config:
+data_source_class_type: ImplicitronDataSource
+model_factory_class_type: ImplicitronModelFactory
+optimizer_factory_class_type: ImplicitronOptimizerFactory
+training_loop_class_type: ImplicitronTrainingLoop
+disable_testing: true
+disable_validation: true
+seed: 42
+detect_anomaly: false
+exp_dir: /home/karnewar/projects/holo_diffusion/release_experiments/unet_recon_test_mask_sample
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+
+# Data source config:
+data_source_ImplicitronDataSource_args:
+  dataset_map_provider_class_type: JsonIndexDatasetMapProviderV2
+  data_loader_map_provider_class_type: SequenceDataLoaderMapProvider
+  dataset_map_provider_JsonIndexDatasetMapProviderV2_args:
+    category: teddybear
+    subset_name: fewview_dev
+    dataset_root: /home/karnewar/data/co3dv2
+    test_on_train: true
+    only_test_set: false
+    load_eval_batches: true
+    num_load_workers: 4
+    n_known_frames_for_test: 0
+    dataset_class_type: JsonIndexDataset
+    path_manager_factory_class_type: PathManagerFactory
+    dataset_JsonIndexDataset_args:
+      limit_to: 0
+      limit_sequences_to: 10
+      pick_sequence: []
+      exclude_sequence: []
+      limit_category_to: []
+      load_images: true
+      load_depths: true
+      load_depth_masks: true
+      load_masks: true
+      load_point_clouds: false
+      max_points: 0
+      mask_images: false
+      mask_depths: false
+      image_height: 800
+      image_width: 800
+      box_crop: true
+      box_crop_mask_thr: 0.4
+      box_crop_context: 0.3
+      remove_empty_masks: true
+      n_frames_per_sequence: -1
+      seed: 0
+      sort_frames: false
+    path_manager_factory_PathManagerFactory_args:
+      silence_logs: true
+  data_loader_map_provider_SequenceDataLoaderMapProvider_args:
+    batch_size: 16
+    num_workers: 5
+    dataset_length_train: 500
+    dataset_length_val: 1
+    dataset_length_test: 0
+    train_conditioning_type: SAME
+    val_conditioning_type: SAME
+    test_conditioning_type: SAME
+    images_per_seq_options:
+    - 16  # should be same as batch-size
+    sample_consecutive_frames: false
+    consecutive_frames_max_gap: 0
+    consecutive_frames_max_gap_seconds: 0.1
+
+# Model Config:
+model_factory_ImplicitronModelFactory_args:
+  resume: true
+  resume_epoch: -1
+  force_resume: false
+  model_class_type: HoloDiffusionModel
+  model_HoloDiffusionModel_args:
+    resol: 16
+    volume_extent: 8.0
+    feature_size: 64
+    num_passes: 2
+    render_image_width: 512
+    render_image_height: 512
+    output_rasterized_mc: true
+
+    # miscellaneous options:
+    tqdm_trigger_threshold: 100
+
+    # 3D UNET CONFIGURATION
+    net_3d_enabled: true
+    net_3d_class_type: SimpleUnet3D
+    net_3d_SimpleUnet3D_args:
+      model_channels: 64
+      num_res_blocks: 2
+      num_heads: 2
+      channel_mult: [1, 1, 2, 4, 8]
+      attention_resolutions: [4, 8]
+    
+    # DIFFUSION CONFIGURATION
+    diffusion_enabled: false
+    # diffusion_args:  # diffusion is a Configurable not Replaceable
+    #   model_mean_type: START_X
+    #   model_var_type: FIXED_SMALL
+    #   beta_schedule_type: linear
+    #   num_steps: 1000
+    #   beta_start_unscaled: 0.0001
+    #   beta_end_unscaled: 0.02
+    # enable_bootstrap: true
+    # bootstrap_prob: 0.5
+
+    mask_threshold: 0.5
+    bg_color:
+    - 1.0
+    - 1.0
+    - 1.0
+    n_train_target_views: 6
+    sampling_mode_training: mask_sample
+    sampling_mode_evaluation: full_grid
+    raysampler_class_type: AdaptiveRaySampler
+    renderer_class_type: HoloMultiPassEmissionAbsorptionRenderer
+    regularization_metrics_class_type: RegularizationMetrics
+    loss_weights:
+      loss_diffusion: 0.0
+      loss_vae_mse: 0.0
+      loss_vae_huber: 0.0
+      loss_lpips: 0.0
+      loss_rgb_mse: 1.0
+      loss_prev_stage_rgb_mse: 1.0
+      loss_prev_stage_prev_stage_rgb_mse: 1.0
+      loss_prev_stage_prev_stage_prev_stage_rgb_mse: 1.0
+      loss_prev_stage_prev_stage_prev_stage_prev_stage_rgb_mse: 1.0
+      loss_mask_bce: 0.0
+      loss_prev_stage_mask_bce: 0.0
+      loss_prev_stage_prev_stage_mask_bce: 0.0
+      loss_gan_gen: 0.0
+    raysampler_AdaptiveRaySampler_args:
+      n_pts_per_ray_training: 64
+      n_pts_per_ray_evaluation: 64
+      n_rays_per_image_sampled_from_mask: 1024
+      n_rays_total_training: null
+      stratified_point_sampling_training: true
+      stratified_point_sampling_evaluation: false
+      scene_extent: 4.0
+      scene_center:
+      - 0.0
+      - 0.0
+      - 0.0
+    renderer_HoloMultiPassEmissionAbsorptionRenderer_args:
+      n_pts_per_ray_fine_training: 16
+      n_pts_per_ray_fine_evaluation: 16
+      stratified_sampling_coarse_training: true
+      stratified_sampling_coarse_evaluation: false
+      append_coarse_samples_to_fine: true
+      density_noise_std_train: 1.0
+      return_weights: false
+      raymarcher_class_type: EmissionAbsorptionRaymarcher
+      raymarcher_EmissionAbsorptionRaymarcher_args:
+        surface_thickness: 1
+        bg_color:
+        - 1.0
+        - 1.0
+        - 1.0
+        replicate_last_interval: false
+        background_opacity: 10000000000.0
+        density_relu: true
+        blend_output: false
+    view_pooler_enabled: true
+    image_feature_extractor_class_type: ResNetFeatureExtractor
+    image_feature_extractor_ResNetFeatureExtractor_args:
+      proj_dim: 16  # half of default value
+      image_rescale: 0.32 # 256.0 / 800.0
+    view_pooler_args:
+      view_sampler_args:
+        masked_sampling: false
+        sampling_mode: bilinear
+    implicit_function_class_type: HoloVoxelGridImplicitFunction
+    view_metrics_class_type: HoloDiffusionMetrics
+    view_metrics_HoloDiffusionMetrics_args:
+      calc_lpips_loss: false
+    regularization_metrics_RegularizationMetrics_args: {}
+optimizer_factory_ImplicitronOptimizerFactory_args:
+  betas:
+  - 0.9
+  - 0.999
+  breed: Adam
+  exponential_lr_step_size: 250
+  gamma: 0.1
+  lr: 5.0e-05
+  lr_policy: MultiStepLR
+  momentum: 0.9
+  multistep_lr_milestones:
+  - 500
+  weight_decay: 0.0
+  linear_exponential_lr_milestone: 200
+  linear_exponential_start_gamma: 0.1
+  foreach: true
+  group_learning_rates: {}
+training_loop_ImplicitronTrainingLoop_args:
+  evaluator_class_type: ImplicitronEvaluator
+  evaluator_ImplicitronEvaluator_args:
+    is_multisequence: true
+    camera_difficulty_bin_breaks:
+    - 0.97
+    - 0.98
+  eval_only: false
+  max_epochs: 7000
+  store_checkpoints: true
+  store_checkpoints_purge: 1
+  test_interval: -1
+  test_when_finished: false
+  validation_interval: 1
+  clip_grad: 0.0
+  metric_print_interval: 5
+  visualize_interval: 100
+  visdom_env: ''
+  visdom_port: 9000
+  visdom_server: http://0.0.0.0
