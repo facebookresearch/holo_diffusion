@@ -148,3 +148,7 @@ src/
 
 # some more UCL stuff to ignore
 src/
+
+# ignore internal griddle stuff
+experiment_config.py
+griddle_zoo_configs/

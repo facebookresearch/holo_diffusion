@@ -2,11 +2,11 @@ data_source_class_type: ImplicitronDataSource
 model_factory_class_type: ImplicitronModelFactory
 optimizer_factory_class_type: ImplicitronOptimizerFactory
 training_loop_class_type: ImplicitronTrainingLoop
-disable_testing: true
-disable_validation: true
-seed: 42
-detect_anomaly: false
-exp_dir: /fsx-repligen/animeshkarnewar/holo_diffusion/release_experiments/debug_holo_diffusion
+disable_testing: false
+disable_validation: false
+seed: 0
+detect_anomaly: true
+exp_dir: /fsx-repligen/animeshkarnewar/holo_diffusion/repro_experiments/holo_diffusion_0310_v1_diff_multigpu_nodec_wbg_multicat_resnet/holo_diffusion_0310_v1_diff_multigpu_nodec_wbg_multicat_resnet
 hydra:
   run:
     dir: .
@@ -54,7 +54,7 @@ data_source_ImplicitronDataSource_args:
   data_loader_map_provider_SequenceDataLoaderMapProvider_args:
     batch_size: 33
     num_workers: 5
-    dataset_length_train: 8000
+    dataset_length_train: 10
     dataset_length_val: 1
     dataset_length_test: 0
     train_conditioning_type: SAME
@@ -72,6 +72,7 @@ model_factory_ImplicitronModelFactory_args:
   force_resume: false
   model_HoloDiffusionModel_args:
     log_vars:
+    - loss_diffusion
     - loss_rgb_psnr_fg
     - loss_rgb_psnr
     - loss_rgb_mse
@@ -85,19 +86,31 @@ model_factory_ImplicitronModelFactory_args:
     - loss_density_tv
     - loss_depth_neg_penalty
     - loss_autodecoder_norm
+    - loss_gan_gen
+    - loss_gan_dis
     - loss_prev_stage_rgb_mse
     - loss_prev_stage_prev_stage_rgb_mse
     - loss_prev_stage_prev_stage_prev_stage_rgb_mse
     - loss_prev_stage_prev_stage_prev_stage_prev_stage_rgb_mse
     - loss_prev_stage_prev_stage_prev_stage_prev_stage_prev_stage_rgb_mse
+    - loss_prev_stage_lpips
+    - loss_prev_stage_prev_stage_lpips
+    - loss_prev_stage_prev_stage_prev_stage_lpips
+    - loss_prev_stage_prev_stage_prev_stage_prev_stage_lpips
+    - loss_prev_stage_prev_stage_prev_stage_prev_stage_prev_stage_lpips
     - loss_prev_stage_rgb_psnr_fg
     - loss_prev_stage_rgb_psnr
     - loss_prev_stage_mask_bce
     - loss_prev_stage_prev_stage_mask_bce
     - loss_prev_stage_prev_stage_prev_stage_mask_bce
+    - loss_vae_mse
+    - loss_vae_huber
+    - loss_lpips
     - objective
     - epoch
     - sec/it
+    - gan_scores_real
+    - gan_scores_fake
     mask_images: true
     mask_depths: true
     render_image_width: 512
@@ -111,7 +124,7 @@ model_factory_ImplicitronModelFactory_args:
     num_passes: 2
     chunk_size_grid: 40960
     render_features_dimensions: 3
-    tqdm_trigger_threshold: 100
+    tqdm_trigger_threshold: 16
     n_train_target_views: 3
     sampling_mode_training: mask_sample
     sampling_mode_evaluation: full_grid
@@ -121,17 +134,22 @@ model_factory_ImplicitronModelFactory_args:
     image_feature_extractor_class_type: ResNetFeatureExtractor
     view_pooler_enabled: true
     implicit_function_class_type: HoloVoxelGridImplicitFunction
-    view_metrics_class_type: ViewMetrics
+    view_metrics_class_type: HoloDiffusionMetrics
     regularization_metrics_class_type: RegularizationMetrics
     loss_weights:
+      loss_diffusion: 0.0
+      loss_vae_mse: 0.0
+      loss_vae_huber: 0.0
+      loss_lpips: 0.0
       loss_rgb_mse: 1.0
       loss_prev_stage_rgb_mse: 1.0
       loss_prev_stage_prev_stage_rgb_mse: 1.0
-      loss_prev_stage_prev_stage_prev_stage_rgb_mse: 1.0
-      loss_prev_stage_prev_stage_prev_stage_prev_stage_rgb_mse: 1.0
+      loss_prev_stage_prev_stage_prev_stage_rgb_mse: 0.0
+      loss_prev_stage_prev_stage_prev_stage_prev_stage_rgb_mse: 0.0
       loss_mask_bce: 0.0
       loss_prev_stage_mask_bce: 0.0
       loss_prev_stage_prev_stage_mask_bce: 0.0
+      loss_gan_gen: 1.0
     raysampler_AdaptiveRaySampler_args:
       n_pts_per_ray_training: 64
       n_pts_per_ray_evaluation: 64
@@ -139,6 +157,7 @@ model_factory_ImplicitronModelFactory_args:
       n_rays_total_training: null
       stratified_point_sampling_training: true
       stratified_point_sampling_evaluation: false
+      cast_ray_bundle_as_cone: false
       scene_extent: 4.0
       scene_center:
       - 0.0
@@ -153,6 +172,8 @@ model_factory_ImplicitronModelFactory_args:
       append_coarse_samples_to_fine: true
       density_noise_std_train: 1.0
       return_weights: false
+      blurpool_weights: false
+      sample_pdf_eps: 1.0e-05
       raymarcher_EmissionAbsorptionRaymarcher_args:
         surface_thickness: 1
         bg_color:
@@ -174,7 +195,7 @@ model_factory_ImplicitronModelFactory_args:
       normalize_image: true
       image_rescale: 0.32
       first_max_pool: true
-      proj_dim: 16
+      proj_dim: 4
       l2_norm: true
       add_masks: true
       add_images: true
@@ -195,62 +216,146 @@ model_factory_ImplicitronModelFactory_args:
         n_harmonic_functions_ray: 3
         checkpointed_mlp: true
     implicit_function_HoloVoxelGridImplicitFunction_args:
-      resol: 32
+      resol: 16
+      tensorf_pool_resol: 5
       volume_extent: 8.0
       n_hidden: 128
-      feature_dim: 64
+      feature_dim: 0
       init_density_bias: 0.0001
-      render_normals: true
-      render_mlp_args:
-        input_dims: 128
-        output_feature_dims: 3
-        output_vp_independent_feature_dims: 64
-        feat_emb_dims: 0
-        dir_emb_dims: 4
-        dnet_num_layers: 4
-        dnet_hidden_dim: 256
-        dnet_input_skips:
+      n_harmonic_functions_dir: 3
+      color_model: deep_mlp
+      density_net_relu: false
+      voxel_grid_type: full
+      tanh_voxel_feats: true
+      deep_render_mlp_n_dnet_layers: 4
+      deep_render_mlp_radiance_features_vp_independent: false
+      deep_render_mlp_n_hidden: 256
+      net_3d_enabled: true
+      net_3d_class_type: SimpleUnet3D
+      net_3d_random_rotation: false
+      diffusion_enabled: true
+      diffusion_n_grid_repeat: 1
+      diffusion_one_grid_per_target_view: true
+      diffusion_standard_conditioning: false
+      diffusion_conditioning_dropout: 0.15
+      sample_mode: false
+      progressive_sample: false
+      clip_denoised_sampling: null
+      clip_denoised_training: false
+      second_pass_diffusion_bootstrap_prob: 0.5
+      detach_viewpool: false
+      render_normals: false
+      net_3d_SimpleUnet3D_args:
+        in_channels: 64
+        out_channels: 64
+        model_channels: 128
+        num_res_blocks: 2
+        channel_mult:
+        - 1
+        - 1
         - 2
-        rnet_num_layers: 1
-        rnet_hidden_dim: 128
-        rnet_input_skips: []
-        activation_fn: LEAKYRELU
-    view_metrics_ViewMetrics_args: {}
+        - 4
+        - 8
+        attention_resolutions:
+        - 4
+        - 8
+        num_heads: 2
+        dropout: 0.0
+        image_size: 64
+        homogeneous_resample: true
+        text_conditional: false
+      diffusion_args:
+        schedule_sampler_type: uniform
+        beta_schedule_type: linear
+        num_steps: 1000
+        beta_start_unscaled: 0.0001
+        beta_end_unscaled: 0.02
+        model_mean_type: START_X
+        model_var_type: FIXED_SMALL
+        loss_type: MSE
+    view_metrics_HoloDiffusionMetrics_args:
+      calc_lpips_loss: false
+      calc_vae_feature_loss: false
+      sd_vae_ckpt_path: /private/home/dnovotny/pixar_replay_master/pixar_replay/experimental/models/holo_diffusion/stable_diffusion/models/first_stage_models/kl-f8/model.ckpt
+      sd_vae_config_path: /private/home/dnovotny/pixar_replay_master/pixar_replay/experimental/models/holo_diffusion/stable_diffusion/models/first_stage_models/kl-f8/config.yaml
     regularization_metrics_RegularizationMetrics_args: {}
-    resol: 16
-    volume_extent: 8.0
-    feature_size: 64
-    net_3d_enabled: true
-    net_3d_class_type: SimpleUnet3D
-    diffusion_enabled: true
-    enable_bootstrap: true
-    bootstrap_prob: 0.5
-    net_3d_SimpleUnet3D_args:
-      image_size: 64
-      in_channels: 128
-      out_channels: 128
-      model_channels: 64
-      num_res_blocks: 2
-      channel_mult:
-      - 1
-      - 1
-      - 2
-      - 4
-      - 8
-      attention_resolutions:
-      - 4
-      - 8
-      num_heads: 2
-      dropout: 0.0
-      homogeneous_resample: true
-    diffusion_args:
-      beta_schedule_type: linear
-      num_steps: 1000
-      beta_start_unscaled: 0.0001
-      beta_end_unscaled: 0.02
-      model_mean_type: START_X
-      model_var_type: FIXED_SMALL
-      schedule_sampler_type: uniform
+    postprocessor_enabled: true
+    postprocessor_class_type: TrivialPostProcessor
+    gan_loss_enabled: false
+    gan_loss_class_type: HingeGANLoss
+    refine_implicit_function_enabled: false
+    refine_implicit_function_class_type: TriplaneImplicitFunctionV2
+    postprocessor_TrivialPostProcessor_args:
+      input_channels: 3
+    gan_loss_HingeGANLoss_args:
+      discriminator_class_type: ConvPatchDiscriminator
+      discriminator_ConvPatchDiscriminator_args:
+        model_channels: 32
+        channel_multiplier:
+        - 1
+        - 2
+        - 4
+        - 8
+        in_channels: 3
+    refine_implicit_function_TriplaneImplicitFunctionV2_args:
+      render_features_dim: 0
+      render_features_vp_independent: false
+      voxel_grid_class_type: TriplaneVoxelGrid
+      voxel_grid_extents:
+      - 8.0
+      - 8.0
+      - 8.0
+      voxel_grid_translation:
+      - 0.0
+      - 0.0
+      - 0.0
+      voxel_grid_init_std: 0.001
+      use_shperical_latent_init: false
+      optimize_latent_0: true
+      norm_latent_0_elemwise: true
+      latent_0_learnable_scale: false
+      norm_voxel_features_elemwise: true
+      separate_grid_lr: false
+      decoder_class_type: DeepRenderMLPDecoder
+      voxel_grid_TriplaneVoxelGrid_args:
+        align_corners: true
+        padding: zeros
+        mode: bilinear
+        n_features: 64
+        resolution_changes:
+          0:
+          - 128
+          - 128
+          - 128
+        xy_pos_embed_fns: 0
+        feat_pos_embed_fns: 0
+        combination_type: cat
+        resolution_change_preset: null
+      decoder_DeepRenderMLPDecoder_args:
+        feat_emb_dims: 0
+        dir_emb_dims: 2
+        output_vp_dependent_feature_dims: 3
+        output_vp_independent_feature_dims: 1
+        trunk_net_layer_depths:
+        - 256
+        - 256
+        - 256
+        - 256
+        trunk_net_skips:
+        - false
+        - false
+        - true
+        - false
+        vpi_head_layer_depths:
+        - 256
+        vpi_head_skips:
+        - false
+        vp_head_layer_depths:
+        - 128
+        vp_head_skips:
+        - false
+        activation_fn: LeakyReLU
+        activation_fn_kwargs: {}
 optimizer_factory_ImplicitronOptimizerFactory_args:
   betas:
   - 0.9
@@ -258,7 +363,7 @@ optimizer_factory_ImplicitronOptimizerFactory_args:
   breed: Adam
   exponential_lr_step_size: 250
   gamma: 0.1
-  lr: 4.0e-05
+  lr: 8.0e-05
   lr_policy: MultiStepLR
   momentum: 0.9
   multistep_lr_milestones:
@@ -277,14 +382,20 @@ training_loop_ImplicitronTrainingLoop_args:
     - 0.98
   eval_only: false
   max_epochs: 1000
-  store_checkpoints: true
+  store_checkpoints: false
   store_checkpoints_purge: 1
   test_interval: -1
   test_when_finished: false
   validation_interval: 1
   clip_grad: 0.0
   metric_print_interval: 5
-  visualize_interval: 10
-  visdom_env: ''
+  visualize_interval: 2
+  plot_stats_to_visdom: true
+  visdom_env: holo_diffusion_debug
   visdom_port: 9999
   visdom_server: http://10.200.228.28
+  whole_dataset_batch: false
+  n_batches_in_epoch: 1
+  profile: false
+  trace_file_fw: trace_fw.json
+  trace_file_bw: trace_bw.json

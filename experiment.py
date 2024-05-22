@@ -278,6 +278,8 @@ class Experiment(Configurable):  # pyre-ignore: 13
             train_dataset=datasets.train,
             model=model,
             optimizer=optimizer,
+            optimizer_factory=self.optimizer_factory,
+            optimizer_discriminator=None,
             scheduler=scheduler,
             all_train_cameras=all_train_cameras,
             accelerator=accelerator,

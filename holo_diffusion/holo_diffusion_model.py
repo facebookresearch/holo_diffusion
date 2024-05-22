@@ -591,7 +591,9 @@ class HoloDiffusionModel(GenericModel):  # pyre-ignore: 13
             if r.prev_stage is not None:
                 _show_rendered(r.prev_stage, "ps_" + prefix)
 
-        _show_rendered(rendered, "")
+        if not self.output_rasterized_mc:
+            # show these only when not using rasterized mc
+            _show_rendered(rendered, "")
 
         if rendered.aux.get("samples", None) is not None:
             samples = rendered.aux["samples"]
